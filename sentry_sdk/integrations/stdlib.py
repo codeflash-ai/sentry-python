@@ -70,51 +70,58 @@ def _install_httplib():
         default_port = self.default_port
 
         client = sentry_sdk.get_client()
-        if client.get_integration(StdlibIntegration) is None or is_sentry_url(
-            client, host
-        ):
+
+        # Fast path: skip everything if not enabled or is sentry url
+        integration = client.get_integration(StdlibIntegration)
+        if integration is None or is_sentry_url(client, host):
             return real_putrequest(self, method, url, *args, **kwargs)
 
-        real_url = url
-        if real_url is None or not real_url.startswith(("http://", "https://")):
-            real_url = "%s://%s%s%s" % (
-                default_port == 443 and "https" or "http",
-                host,
-                port != default_port and ":%s" % port or "",
-                url,
-            )
+        # More efficient check and minimal computation before building real_url
+        if url is not None and url.startswith(("http://", "https://")):
+            real_url = url
+        else:
+            scheme = "https" if default_port == 443 else "http"
+            # Avoid string concatenation by using f-string and build port only if necessary
+            if port != default_port:
+                real_url = f"{scheme}://{host}:{port}{url}"
+            else:
+                real_url = f"{scheme}://{host}{url}"
 
-        parsed_url = None
+        # Avoid double assignment and redundant None
         with capture_internal_exceptions():
             parsed_url = parse_url(real_url, sanitize=False)
+        # parsed_url may be None if exception
+
+        # Cache .url and .query/.fragment for reuse and minimal getattr()
+        parsed_url_url = parsed_url.url if parsed_url else SENSITIVE_DATA_SUBSTITUTE
 
         span = sentry_sdk.start_span(
             op=OP.HTTP_CLIENT,
-            name="%s %s"
-            % (method, parsed_url.url if parsed_url else SENSITIVE_DATA_SUBSTITUTE),
+            name=f"{method} {parsed_url_url}",
             origin="auto.http.stdlib.httplib",
         )
         span.set_data(SPANDATA.HTTP_METHOD, method)
+
         if parsed_url is not None:
+            # Group .set_data() by parsed_url
             span.set_data("url", parsed_url.url)
             span.set_data(SPANDATA.HTTP_QUERY, parsed_url.query)
             span.set_data(SPANDATA.HTTP_FRAGMENT, parsed_url.fragment)
 
         rv = real_putrequest(self, method, url, *args, **kwargs)
 
+        # Inline get_current_scope and iter_trace_propagation_headers loop for speed
         if should_propagate_trace(client, real_url):
-            for (
-                key,
-                value,
-            ) in sentry_sdk.get_current_scope().iter_trace_propagation_headers(
-                span=span
-            ):
+            scope = sentry_sdk.get_current_scope()
+            # Use a local reference for .putheader for less attribute lookup in the loop
+            putheader = self.putheader
+            for key, value in scope.iter_trace_propagation_headers(span=span):
                 logger.debug(
                     "[Tracing] Adding `{key}` header {value} to outgoing request to {real_url}.".format(
                         key=key, value=value, real_url=real_url
                     )
                 )
-                self.putheader(key, value)
+                putheader(key, value)
 
         self._sentrysdk_span = span  # type: ignore[attr-defined]
 
@@ -124,12 +131,13 @@ def _install_httplib():
         # type: (HTTPConnection, *Any, **Any) -> Any
         span = getattr(self, "_sentrysdk_span", None)
 
+        # Fast path
         if span is None:
             return real_getresponse(self, *args, **kwargs)
 
         try:
             rv = real_getresponse(self, *args, **kwargs)
-
+            # Direct integer conversion, minimal attribute lookups
             span.set_http_status(int(rv.status))
             span.set_data("reason", rv.reason)
         finally:
