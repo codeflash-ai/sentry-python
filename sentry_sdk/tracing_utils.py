@@ -527,7 +527,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
@@ -1030,27 +1032,21 @@ def _get_input_attributes(template, send_pii, args, kwargs):
             "top_k": (SPANDATA.GEN_AI_REQUEST_TOP_K, int),
         }
 
-        def _set_from_key(key, value):
-            # type: (str, Any) -> None
-            if key in mapping:
-                (attribute, data_type) = mapping[key]
-                if value is not None and isinstance(value, data_type):
-                    attributes[attribute] = value
-
-        for key, value in list(kwargs.items()):
+        for key, value in kwargs.items():
             if key == "prompt" and isinstance(value, str):
-                attributes.setdefault(SPANDATA.GEN_AI_REQUEST_MESSAGES, []).append(
-                    {"role": "user", "content": value}
-                )
+                messages = attributes.setdefault(SPANDATA.GEN_AI_REQUEST_MESSAGES, [])
+                messages.append({"role": "user", "content": value})
                 continue
 
             if key == "system_prompt" and isinstance(value, str):
-                attributes.setdefault(SPANDATA.GEN_AI_REQUEST_MESSAGES, []).append(
-                    {"role": "system", "content": value}
-                )
+                messages = attributes.setdefault(SPANDATA.GEN_AI_REQUEST_MESSAGES, [])
+                messages.append({"role": "system", "content": value})
                 continue
 
-            _set_from_key(key, value)
+            if key in mapping:
+                attribute, data_type = mapping[key]
+                if value is not None and isinstance(value, data_type):
+                    attributes[attribute] = value
 
     if template == SPANTEMPLATE.AI_TOOL and send_pii:
         attributes[SPANDATA.GEN_AI_TOOL_INPUT] = safe_repr(
