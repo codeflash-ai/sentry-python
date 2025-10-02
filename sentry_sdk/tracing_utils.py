@@ -527,7 +527,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
@@ -771,7 +773,6 @@ def normalize_incoming_data(incoming_data):
 def create_span_decorator(
     op=None, name=None, attributes=None, template=SPANTEMPLATE.DEFAULT
 ):
-    # type: (Optional[Union[str, OP]], Optional[str], Optional[dict[str, Any]], SPANTEMPLATE) -> Any
     """
     Create a span decorator that can wrap both sync and async functions.
 
@@ -788,91 +789,106 @@ def create_span_decorator(
         use cases.
     :type template: :py:class:`sentry_sdk.consts.SPANTEMPLATE`
     """
+
     from sentry_sdk.scope import should_send_default_pii
 
     def span_decorator(f):
-        # type: (Any) -> Any
         """
         Decorator to create a span for the given function.
         """
+
+        # Optimize attribute access and static computation by computing them once here
+        qualname = qualname_from_function(f)
+        iscoroutine = inspect.iscoroutinefunction(f)
+
+        # Pre-resolve the function signature once for both wrappers
+        try:
+            signature = inspect.signature(f)
+        except Exception:
+            signature = None
+
+        span_op_value = op or _get_span_op(template)
+        function_name_value = name or qualname or ""
+        span_name_partial = functools.partial(
+            _get_span_name, template, function_name_value
+        )
+
+        def _common_before(current_span, args, kwargs):
+            if current_span is None:
+                logger.debug(
+                    "Cannot create a child span for %s. "
+                    "Please start a Sentry transaction before calling this function.",
+                    qualname,
+                )
+                return None
+            return current_span
 
         @functools.wraps(f)
         async def async_wrapper(*args, **kwargs):
             # type: (*Any, **Any) -> Any
             current_span = get_current_span()
-
-            if current_span is None:
-                logger.debug(
-                    "Cannot create a child span for %s. "
-                    "Please start a Sentry transaction before calling this function.",
-                    qualname_from_function(f),
-                )
+            if not _common_before(current_span, args, kwargs):
                 return await f(*args, **kwargs)
 
-            span_op = op or _get_span_op(template)
-            function_name = name or qualname_from_function(f) or ""
-            span_name = _get_span_name(template, function_name, kwargs)
             send_pii = should_send_default_pii()
+            span_name = span_name_partial(
+                kwargs
+            )  # avoid re-calling qualname or string concatenation
 
             with current_span.start_child(
-                op=span_op,
+                op=span_op_value,
                 name=span_name,
             ) as span:
-                span.update_data(attributes or {})
+                if attributes:
+                    span.update_data(attributes)
+                else:
+                    span.update_data({})
                 _set_input_attributes(
-                    span, template, send_pii, function_name, f, args, kwargs
+                    span, template, send_pii, function_name_value, f, args, kwargs
                 )
-
                 result = await f(*args, **kwargs)
-
                 _set_output_attributes(span, template, send_pii, result)
-
                 return result
 
-        try:
-            async_wrapper.__signature__ = inspect.signature(f)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        if signature is not None:
+            try:
+                async_wrapper.__signature__ = signature  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
         @functools.wraps(f)
         def sync_wrapper(*args, **kwargs):
             # type: (*Any, **Any) -> Any
             current_span = get_current_span()
-
-            if current_span is None:
-                logger.debug(
-                    "Cannot create a child span for %s. "
-                    "Please start a Sentry transaction before calling this function.",
-                    qualname_from_function(f),
-                )
+            if not _common_before(current_span, args, kwargs):
                 return f(*args, **kwargs)
 
-            span_op = op or _get_span_op(template)
-            function_name = name or qualname_from_function(f) or ""
-            span_name = _get_span_name(template, function_name, kwargs)
             send_pii = should_send_default_pii()
+            span_name = span_name_partial(kwargs)
 
             with current_span.start_child(
-                op=span_op,
+                op=span_op_value,
                 name=span_name,
             ) as span:
-                span.update_data(attributes or {})
+                if attributes:
+                    span.update_data(attributes)
+                else:
+                    span.update_data({})
                 _set_input_attributes(
-                    span, template, send_pii, function_name, f, args, kwargs
+                    span, template, send_pii, function_name_value, f, args, kwargs
                 )
 
                 result = f(*args, **kwargs)
-
                 _set_output_attributes(span, template, send_pii, result)
-
                 return result
 
-        try:
-            sync_wrapper.__signature__ = inspect.signature(f)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        if signature is not None:
+            try:
+                sync_wrapper.__signature__ = signature  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
-        if inspect.iscoroutinefunction(f):
+        if iscoroutine:
             return async_wrapper
         else:
             return sync_wrapper
