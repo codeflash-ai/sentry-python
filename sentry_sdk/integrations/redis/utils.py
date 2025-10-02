@@ -70,32 +70,40 @@ def _key_as_string(key):
 
 
 def _get_safe_key(method_name, args, kwargs):
-    # type: (str, Optional[tuple[Any, ...]], Optional[dict[str, Any]]) -> Optional[tuple[str, ...]]
     """
     Gets the key (or keys) from the given method_name.
     The method_name could be a redis command or a django caching command
     """
     key = None
 
-    if args is not None and method_name.lower() in _MULTI_KEY_COMMANDS:
-        # for example redis "mget"
-        key = tuple(args)
+    # Move & lower only once
+    if args is not None:
+        method_l = method_name.lower()
+        if method_l in _MULTI_KEY_COMMANDS:
+            # for example redis "mget"
+            key = tuple(args)
+            return key  # Early return to avoid further checks
+        elif len(args) >= 1:
+            v = args[0]
+            # isinstance ordering: most common first (list, tuple, dict)
+            t = type(v)
+            if t is list or t is tuple or t is dict:
+                key = tuple(v)
+            else:
+                key = (v,)
+            return key
 
-    elif args is not None and len(args) >= 1:
-        # for example django "set_many/get_many" or redis "get"
-        if isinstance(args[0], (dict, list, tuple)):
-            key = tuple(args[0])
-        else:
-            key = (args[0],)
-
-    elif kwargs is not None and "key" in kwargs:
-        # this is a legacy case for older versions of Django
-        if isinstance(kwargs["key"], (list, tuple)):
-            if len(kwargs["key"]) > 0:
-                key = tuple(kwargs["key"])
-        else:
-            if kwargs["key"] is not None:
-                key = (kwargs["key"],)
+    if kwargs is not None:
+        k = kwargs.get("key", None)
+        if k is not None:
+            t = type(k)
+            if t is list or t is tuple:
+                if k:  # equivalent to len(kwargs["key"]) > 0, but faster
+                    key = tuple(k)
+                    return key
+            else:
+                key = (k,)
+                return key
 
     return key
 
