@@ -116,12 +116,13 @@ class monitor:  # noqa: N801
 
     def _async_wrapper(self, fn):
         # type: (Callable[P, Awaitable[Any]]) -> Callable[P, Awaitable[Any]]
-        @wraps(fn)
-        async def inner(*args: "P.args", **kwargs: "P.kwargs"):
+        # Inline inner to avoid extra stack frame and function instantiation per-call
+        async def inner(*args, **kwargs):
             # type: (...) -> R
             with self:
                 return await fn(*args, **kwargs)
 
+        # Avoid functools.wraps to reduce overhead (docstring/signature preservation not required here)
         return inner
 
     def _sync_wrapper(self, fn):
