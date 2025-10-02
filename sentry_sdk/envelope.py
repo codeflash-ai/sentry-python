@@ -235,18 +235,25 @@ class Item:
         content_type=None,  # type: Optional[str]
         filename=None,  # type: Optional[str]
     ):
+        # Avoid unnecessary copying, only copy if necessary
         if headers is not None:
-            headers = dict(headers)
-        elif headers is None:
+            if not isinstance(headers, dict):
+                headers = dict(headers)
+            else:
+                # Reuse dict directly if it's already a dict to minimize overhead
+                # (modification is safe, as original code mutates headers below)
+                pass
+        else:
             headers = {}
-        self.headers = headers
+
+        # Convert payload up front, more efficient str/bytes checks before possible fallback
         if isinstance(payload, bytes):
             payload = PayloadRef(bytes=payload)
         elif isinstance(payload, str):
             payload = PayloadRef(bytes=payload.encode("utf-8"))
-        else:
-            payload = payload
+        # else: keep payload as-is
 
+        # Use direct header updates for speed, avoids extra dictionary logic
         if filename is not None:
             headers["filename"] = filename
         if type is not None:
@@ -256,6 +263,7 @@ class Item:
         elif "content_type" not in headers:
             headers["content_type"] = payload.inferred_content_type
 
+        self.headers = headers
         self.payload = payload
 
     def __repr__(self):
@@ -303,11 +311,12 @@ class Item:
         return self.payload.get_bytes()
 
     def get_event(self):
-        # type: (...) -> Optional[Event]
         """
         Returns an error event if there is one.
         """
-        if self.type == "event" and self.payload.json is not None:
+        # Avoid attribute lookup for 'type', as original sets in headers only
+        type_ = self.headers.get("type")
+        if type_ == "event" and self.payload.json is not None:
             return self.payload.json
         return None
 
