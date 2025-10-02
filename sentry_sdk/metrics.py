@@ -381,7 +381,9 @@ class LocalAggregator:
 
     def __init__(self):
         # type: (...) -> None
-        self._measurements = {}  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
+        self._measurements = (
+            {}
+        )  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
 
     def add(
         self,
@@ -700,17 +702,23 @@ def _serialize_tags(
         return ()
 
     rv = []
+    append = rv.append  # Local var for method lookup speedup
     for key, value in tags.items():
         # If the value is a collection, we want to flatten it.
         if isinstance(value, (list, tuple)):
+            # Avoid function call for str() if not needed, inline None check
+            # Minimize attribute/call lookups in simple loop
             for inner_value in value:
                 if inner_value is not None:
-                    rv.append((key, str(inner_value)))
+                    append((key, str(inner_value)))
         elif value is not None:
-            rv.append((key, str(value)))
+            append((key, str(value)))
 
     # It's very important to sort the tags in order to obtain the
     # same bucket key.
+    if len(rv) < 2:
+        # Sorted on 0 or 1 elements unnecessary, just tuple it directly
+        return tuple(rv)
     return tuple(sorted(rv))
 
 
