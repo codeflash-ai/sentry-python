@@ -87,19 +87,18 @@ def _strip_pii(command):
 
 def _get_db_data(event):
     # type: (Any) -> Dict[str, Any]
-    data = {}
-
-    data[SPANDATA.DB_SYSTEM] = "mongodb"
+    data = {SPANDATA.DB_SYSTEM: "mongodb"}
 
     db_name = event.database_name
     if db_name is not None:
         data[SPANDATA.DB_NAME] = db_name
 
-    server_address = event.connection_id[0]
+    connection_id = event.connection_id
+    server_address = connection_id[0]
     if server_address is not None:
         data[SPANDATA.SERVER_ADDRESS] = server_address
 
-    server_port = event.connection_id[1]
+    server_port = connection_id[1]
     if server_port is not None:
         data[SPANDATA.SERVER_PORT] = server_port
 
