@@ -32,11 +32,7 @@ class GnuBacktraceIntegration(Integration):
     @staticmethod
     def setup_once():
         # type: () -> None
-        @add_global_event_processor
-        def process_gnu_backtrace(event, hint):
-            # type: (Event, dict[str, Any]) -> Event
-            with capture_internal_exceptions():
-                return _process_gnu_backtrace(event, hint)
+        pass
 
 
 def _process_gnu_backtrace(event, hint):
@@ -97,3 +93,10 @@ def _process_gnu_backtrace(event, hint):
             exception["value"] = "\n".join(new_msg)
 
     return event
+
+
+@add_global_event_processor
+def process_gnu_backtrace(event, hint):
+    # type: (Event, dict[str, Any]) -> Event
+    with capture_internal_exceptions():
+        return _process_gnu_backtrace(event, hint)
