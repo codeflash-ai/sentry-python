@@ -48,39 +48,11 @@ import typing
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
 
     from typing import Any
     from typing import Callable
-    from typing import Deque
-    from typing import Dict
-    from typing import Generator
-    from typing import Iterator
-    from typing import List
-    from typing import Optional
     from typing import ParamSpec
-    from typing import Tuple
     from typing import TypeVar
-    from typing import Union
-
-    from typing_extensions import Unpack
-
-    from sentry_sdk._types import (
-        Breadcrumb,
-        BreadcrumbHint,
-        ErrorProcessor,
-        Event,
-        EventProcessor,
-        ExcInfo,
-        Hint,
-        LogLevelStr,
-        SamplingContext,
-        Type,
-    )
-
-    from sentry_sdk.tracing import TransactionKwargs
-
-    import sentry_sdk
 
     P = ParamSpec("P")
     R = TypeVar("R")
@@ -1827,4 +1799,4 @@ def should_send_default_pii():
 from sentry_sdk.client import NonRecordingClient
 
 if TYPE_CHECKING:
-    import sentry_sdk.client
+    pass
