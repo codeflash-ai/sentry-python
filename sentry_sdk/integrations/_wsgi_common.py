@@ -23,6 +23,21 @@ if TYPE_CHECKING:
     from typing import Union
     from sentry_sdk._types import Event, HttpStatusCodeRange
 
+_SENSITIVE_HEADERS_SET = set(
+    x[len("HTTP_") :]
+    for x in (
+        "REMOTE_ADDR",
+        "HTTP_X_FORWARDED_FOR",
+        "HTTP_SET_COOKIE",
+        "HTTP_COOKIE",
+        "HTTP_AUTHORIZATION",
+        "HTTP_X_API_KEY",
+        "HTTP_X_FORWARDED_FOR",
+        "HTTP_X_REAL_IP",
+    )
+    if x.startswith("HTTP_")
+)
+
 
 SENSITIVE_ENV_KEYS = (
     "REMOTE_ADDR",
@@ -227,10 +242,11 @@ def _filter_headers(headers):
     if should_send_default_pii():
         return headers
 
+    sensitive_headers = _SENSITIVE_HEADERS_SET
     return {
         k: (
             v
-            if k.upper().replace("-", "_") not in SENSITIVE_HEADERS
+            if k.upper().replace("-", "_") not in sensitive_headers
             else AnnotatedValue.removed_because_over_size_limit()
         )
         for k, v in headers.items()
