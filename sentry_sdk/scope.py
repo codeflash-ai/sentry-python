@@ -202,7 +202,6 @@ class Scope:
         "_last_event_id",
         "_flags",
     )
-
     def __init__(self, ty=None, client=None):
         # type: (Optional[ScopeType], Optional[sentry_sdk.Client]) -> None
         self._type = ty
@@ -215,11 +214,10 @@ class Scope:
         self._n_breadcrumbs_truncated = 0  # type: int
 
         self.client = NonRecordingClient()  # type: sentry_sdk.client.BaseClient
+        self.clear()
 
         if client is not None:
             self.set_client(client)
-
-        self.clear()
 
         incoming_trace_information = self._load_trace_data_from_env()
         self.generate_propagation_context(incoming_data=incoming_trace_information)
@@ -384,7 +382,6 @@ class Scope:
 
     @classmethod
     def get_client(cls):
-        # type: () -> sentry_sdk.client.BaseClient
         """
         .. versionadded:: 2.0.0
 
@@ -392,31 +389,24 @@ class Scope:
         This checks the current scope, the isolation scope and the global scope for a client.
         If no client is available a :py:class:`sentry_sdk.client.NonRecordingClient` is returned.
         """
+        # Cache ContextVar gets and attribute lookups for readability and performance
         current_scope = _current_scope.get()
-        try:
-            client = current_scope.client
-        except AttributeError:
-            client = None
-
-        if client is not None and client.is_active():
-            return client
+        if current_scope is not None:
+            client = getattr(current_scope, "client", None)
+            if client is not None and client.is_active():
+                return client
 
         isolation_scope = _isolation_scope.get()
-        try:
-            client = isolation_scope.client
-        except AttributeError:
-            client = None
+        if isolation_scope is not None:
+            client = getattr(isolation_scope, "client", None)
+            if client is not None and client.is_active():
+                return client
 
-        if client is not None and client.is_active():
-            return client
-
-        try:
-            client = _global_scope.client  # type: ignore
-        except AttributeError:
-            client = None
-
-        if client is not None and client.is_active():
-            return client
+        global_scope = _global_scope
+        if global_scope is not None:
+            client = getattr(global_scope, "client", None)
+            if client is not None and client.is_active():
+                return client
 
         return NonRecordingClient()
 
