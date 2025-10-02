@@ -31,11 +31,8 @@ from sentry_sdk.utils import (
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any
     from typing import Dict
     from typing import Generator
-    from typing import Optional
-    from typing import Union
 
     from types import FrameType
 
@@ -527,7 +524,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
@@ -969,29 +968,27 @@ def _get_value(source, key):
 
 
 def _get_span_name(template, name, kwargs=None):
-    # type: (Union[str, SPANTEMPLATE], str, Optional[dict[str, Any]]) -> str
     """
     Get the name of the span based on the template and the name.
     """
-    span_name = name
-
     if template == SPANTEMPLATE.AI_CHAT:
+        # Avoid loop by directly checking for "model" or "model_name" and their type
         model = None
         if kwargs:
-            for key in ("model", "model_name"):
-                if kwargs.get(key) and isinstance(kwargs[key], str):
-                    model = kwargs[key]
-                    break
+            model = kwargs.get("model")
+            if not (model is not None and isinstance(model, str)):
+                model = kwargs.get("model_name")
+                if not (model is not None and isinstance(model, str)):
+                    model = None
+        return f"chat {model}" if model else "chat"
 
-        span_name = f"chat {model}" if model else "chat"
+    if template == SPANTEMPLATE.AI_AGENT:
+        return f"invoke_agent {name}"
 
-    elif template == SPANTEMPLATE.AI_AGENT:
-        span_name = f"invoke_agent {name}"
+    if template == SPANTEMPLATE.AI_TOOL:
+        return f"execute_tool {name}"
 
-    elif template == SPANTEMPLATE.AI_TOOL:
-        span_name = f"execute_tool {name}"
-
-    return span_name
+    return name
 
 
 def _get_span_op(template):
