@@ -214,7 +214,13 @@ def determine_profile_session_sampling_decision(sample_rate):
     if not sample_rate:
         return False
 
-    return random.random() < float(sample_rate)
+    sample_rate_f = float(sample_rate)
+    if sample_rate_f <= 0.0:
+        return False
+    if sample_rate_f >= 1.0:
+        return True
+
+    return random.random() < sample_rate_f
 
 
 class ContinuousProfile:
