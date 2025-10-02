@@ -142,7 +142,6 @@ def _install_httplib():
 
 
 def _init_argument(args, kwargs, name, position, setdefault_callback=None):
-    # type: (List[Any], Dict[Any, Any], str, int, Optional[Callable[[Any], Any]]) -> Any
     """
     given (*args, **kwargs) of a function call, retrieve (and optionally set a
     default for) an argument by either name or position.
@@ -152,22 +151,32 @@ def _init_argument(args, kwargs, name, position, setdefault_callback=None):
     entire type signature.
     """
 
+    # Use local variables for tighter scope and speed
+    rv = None
+
+    # Optimize argument lookup and callback call count
+    # Check kwargs first since lookup is usually fast and typical usage is by name
     if name in kwargs:
         rv = kwargs[name]
         if setdefault_callback is not None:
-            rv = setdefault_callback(rv)
-        if rv is not None:
-            kwargs[name] = rv
+            new_rv = setdefault_callback(rv)
+            if new_rv is not None:
+                rv = new_rv
+                kwargs[name] = rv
     elif position < len(args):
         rv = args[position]
         if setdefault_callback is not None:
-            rv = setdefault_callback(rv)
-        if rv is not None:
-            args[position] = rv
+            new_rv = setdefault_callback(rv)
+            if new_rv is not None:
+                rv = new_rv
+                args[position] = rv
     else:
-        rv = setdefault_callback and setdefault_callback(None)
-        if rv is not None:
-            kwargs[name] = rv
+        if setdefault_callback is not None:
+            rv = setdefault_callback(None)
+            if rv is not None:
+                kwargs[name] = rv
+        else:
+            rv = None
 
     return rv
 
