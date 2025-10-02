@@ -11,6 +11,8 @@ from sentry_sdk.crons import monitor
 
 from typing import TYPE_CHECKING
 
+_client_method_docs = {}
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -100,10 +102,15 @@ def scopemethod(f):
 
 def clientmethod(f):
     # type: (F) -> F
-    f.__doc__ = "%s\n\n%s" % (
-        "Alias for :py:meth:`sentry_sdk.Client.%s`" % f.__name__,
-        inspect.getdoc(getattr(Client, f.__name__)),
-    )
+    name = f.__name__
+    try:
+        doc = _client_method_docs[name]
+    except KeyError:
+        # Only perform getattr and getdoc once per name
+        method = getattr(Client, name)
+        doc = inspect.getdoc(method)
+        _client_method_docs[name] = doc
+    f.__doc__ = "Alias for :py:meth:`sentry_sdk.Client.%s`\n\n%s" % (name, doc)
     return f
 
 
