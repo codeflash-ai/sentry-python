@@ -2,7 +2,7 @@ import inspect
 import warnings
 from contextlib import contextmanager
 
-from sentry_sdk import tracing_utils, Client
+from sentry_sdk import Client
 from sentry_sdk._init_implementation import init
 from sentry_sdk.consts import INSTRUMENTER
 from sentry_sdk.scope import Scope, _ScopeManager, new_scope, isolation_scope
@@ -421,7 +421,9 @@ def get_current_span(scope=None):
     """
     Returns the currently active span if there is one running, otherwise `None`
     """
-    return tracing_utils.get_current_span(scope)
+    if scope is None:
+        scope = get_current_scope()
+    return scope.span
 
 
 def get_traceparent():
