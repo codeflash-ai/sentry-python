@@ -66,15 +66,10 @@ def _wrap_intercept_channel(func: Callable[P, Channel]) -> Callable[P, Channel]:
         channel: Channel, *interceptors: grpc.ServerInterceptor
     ) -> Channel:
         if ClientInterceptor._is_intercepted:
-            interceptors = tuple(
-                [
-                    interceptor
-                    for interceptor in interceptors
-                    if not isinstance(interceptor, ClientInterceptor)
-                ]
-            )
-        else:
-            interceptors = interceptors
+            # Avoid unnecessary list and tuple creation if no ClientInterceptor present
+            filtered = [i for i in interceptors if not isinstance(i, ClientInterceptor)]
+            if len(filtered) != len(interceptors):
+                interceptors = tuple(filtered)
         return intercept_channel(channel, *interceptors)
 
     return patched_intercept_channel  # type: ignore
