@@ -223,7 +223,7 @@ class PayloadRef:
 
     def __repr__(self):
         # type: (...) -> str
-        return "<Payload %r>" % (self.inferred_content_type,)
+        return f"<Payload {self.inferred_content_type!r}>"
 
 
 class Item:
