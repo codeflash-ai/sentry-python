@@ -99,45 +99,50 @@ def _install_httpx_async_client():
 
     async def send(self, request, **kwargs):
         # type: (AsyncClient, Request, **Any) -> Response
-        if sentry_sdk.get_client().get_integration(HttpxIntegration) is None:
+        client = sentry_sdk.get_client()
+        integration = client.get_integration(HttpxIntegration)
+        if integration is None:
             return await real_send(self, request, **kwargs)
 
         parsed_url = None
         with capture_internal_exceptions():
             parsed_url = parse_url(str(request.url), sanitize=False)
 
+        # Avoid repeated attribute lookup
+        method = request.method
+        request_url_str = str(request.url)
+        headers = request.headers
+
         with sentry_sdk.start_span(
             op=OP.HTTP_CLIENT,
             name="%s %s"
             % (
-                request.method,
+                method,
                 parsed_url.url if parsed_url else SENSITIVE_DATA_SUBSTITUTE,
             ),
             origin=HttpxIntegration.origin,
         ) as span:
-            span.set_data(SPANDATA.HTTP_METHOD, request.method)
+            span.set_data(SPANDATA.HTTP_METHOD, method)
             if parsed_url is not None:
                 span.set_data("url", parsed_url.url)
                 span.set_data(SPANDATA.HTTP_QUERY, parsed_url.query)
                 span.set_data(SPANDATA.HTTP_FRAGMENT, parsed_url.fragment)
 
-            if should_propagate_trace(sentry_sdk.get_client(), str(request.url)):
-                for (
-                    key,
-                    value,
-                ) in sentry_sdk.get_current_scope().iter_trace_propagation_headers():
+            # Avoid calling sentry_sdk.get_client() and sentry_sdk.get_current_scope() more than necessary
+            if should_propagate_trace(client, request_url_str):
+                scope = sentry_sdk.get_current_scope()
+                propagation_headers = list(scope.iter_trace_propagation_headers())
+                for key, value in propagation_headers:
                     logger.debug(
                         "[Tracing] Adding `{key}` header {value} to outgoing request to {url}.".format(
                             key=key, value=value, url=request.url
                         )
                     )
-                    if key == BAGGAGE_HEADER_NAME and request.headers.get(
-                        BAGGAGE_HEADER_NAME
-                    ):
+                    if key == BAGGAGE_HEADER_NAME and headers.get(BAGGAGE_HEADER_NAME):
                         # do not overwrite any existing baggage, just append to it
-                        request.headers[key] += "," + value
+                        headers[key] += "," + value
                     else:
-                        request.headers[key] = value
+                        headers[key] = value
 
             rv = await real_send(self, request, **kwargs)
 
