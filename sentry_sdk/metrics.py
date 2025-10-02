@@ -381,7 +381,9 @@ class LocalAggregator:
 
     def __init__(self):
         # type: (...) -> None
-        self._measurements = {}  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
+        self._measurements = (
+            {}
+        )  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
 
     def add(
         self,
@@ -614,13 +616,12 @@ class MetricsAggregator:
         if timestamp is None:
             timestamp = time.time()
         meta_key = (ty, key, unit)
-        start_of_day = datetime.fromtimestamp(timestamp, timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
-        )
-        start_of_day = int(to_timestamp(start_of_day))
-
-        if (start_of_day, meta_key) not in self._seen_locations:
-            self._seen_locations.add((start_of_day, meta_key))
+        # Compute start_of_day as an int epoch time at start of the UTC day, avoid constructing datetime objects
+        day_secs = 86400
+        start_of_day = int(timestamp - (timestamp % day_secs))
+        seen_key = (start_of_day, meta_key)
+        if seen_key not in self._seen_locations:
+            self._seen_locations.add(seen_key)
             loc = get_code_location(stacklevel + 3)
             if loc is not None:
                 # Group metadata by day to make flushing more efficient.
