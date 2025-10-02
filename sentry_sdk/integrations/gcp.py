@@ -214,21 +214,21 @@ def _get_google_cloud_logs_url(final_time):
     Returns:
         str -- Google Cloud Logs Console URL to logs.
     """
-    hour_ago = final_time - timedelta(hours=1)
     formatstring = "%Y-%m-%dT%H:%M:%SZ"
+    project = environ.get("GCP_PROJECT")
+    function_name = environ.get("FUNCTION_NAME")
+    region = environ.get("FUNCTION_REGION")
+
+    hour_ago = final_time - timedelta(hours=1)
+    timestamp_end = final_time.strftime(formatstring)
+    timestamp_start = hour_ago.strftime(formatstring)
 
     url = (
-        "https://console.cloud.google.com/logs/viewer?project={project}&resource=cloud_function"
-        "%2Ffunction_name%2F{function_name}%2Fregion%2F{region}&minLogLevel=0&expandAll=false"
-        "&timestamp={timestamp_end}&customFacets=&limitCustomFacetWidth=true"
-        "&dateRangeStart={timestamp_start}&dateRangeEnd={timestamp_end}"
-        "&interval=PT1H&scrollTimestamp={timestamp_end}"
-    ).format(
-        project=environ.get("GCP_PROJECT"),
-        function_name=environ.get("FUNCTION_NAME"),
-        region=environ.get("FUNCTION_REGION"),
-        timestamp_end=final_time.strftime(formatstring),
-        timestamp_start=hour_ago.strftime(formatstring),
+        f"https://console.cloud.google.com/logs/viewer?project={project}&resource=cloud_function"
+        f"%2Ffunction_name%2F{function_name}%2Fregion%2F{region}&minLogLevel=0&expandAll=false"
+        f"&timestamp={timestamp_end}&customFacets=&limitCustomFacetWidth=true"
+        f"&dateRangeStart={timestamp_start}&dateRangeEnd={timestamp_end}"
+        f"&interval=PT1H&scrollTimestamp={timestamp_end}"
     )
 
     return url
