@@ -39,6 +39,12 @@ if TYPE_CHECKING:
 
     from types import FrameType
 
+_MAPPING = {
+    SPANTEMPLATE.AI_CHAT: OP.GEN_AI_CHAT,
+    SPANTEMPLATE.AI_AGENT: OP.GEN_AI_INVOKE_AGENT,
+    SPANTEMPLATE.AI_TOOL: OP.GEN_AI_EXECUTE_TOOL,
+}
+
 
 SENTRY_TRACE_REGEX = re.compile(
     "^[ \t]*"  # whitespace
@@ -527,7 +533,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
@@ -999,12 +1007,7 @@ def _get_span_op(template):
     """
     Get the operation of the span based on the template.
     """
-    mapping = {
-        SPANTEMPLATE.AI_CHAT: OP.GEN_AI_CHAT,
-        SPANTEMPLATE.AI_AGENT: OP.GEN_AI_INVOKE_AGENT,
-        SPANTEMPLATE.AI_TOOL: OP.GEN_AI_EXECUTE_TOOL,
-    }  # type: dict[Union[str, SPANTEMPLATE], Union[str, OP]]
-    op = mapping.get(template, OP.FUNCTION)
+    op = _MAPPING.get(template, OP.FUNCTION)
 
     return str(op)
 
