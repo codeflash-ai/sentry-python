@@ -19,12 +19,12 @@ if TYPE_CHECKING:
 def _get_safe_command(name, args):
     # type: (str, Sequence[Any]) -> str
     command_parts = [name]
+    name_low = name.lower()
+    send_pii = None
 
     for i, arg in enumerate(args):
         if i > _MAX_NUM_ARGS:
             break
-
-        name_low = name.lower()
 
         if name_low in _COMMANDS_INCLUDING_SENSITIVE_DATA:
             command_parts.append(SENSITIVE_DATA_SUBSTITUTE)
@@ -35,7 +35,9 @@ def _get_safe_command(name, args):
             command_parts.append(repr(arg))
 
         else:
-            if should_send_default_pii():
+            if send_pii is None:
+                send_pii = should_send_default_pii()
+            if send_pii:
                 command_parts.append(repr(arg))
             else:
                 command_parts.append(SENSITIVE_DATA_SUBSTITUTE)
