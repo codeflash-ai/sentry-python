@@ -1,6 +1,8 @@
 import sys
 
 from typing import TYPE_CHECKING
+from sentry_sdk.consts import FALSE_VALUES
+from warnings import warn
 
 if TYPE_CHECKING:
     from typing import Any
@@ -39,36 +41,55 @@ def check_uwsgi_thread_support():
     #    --enable-threads is on. One has to explicitly provide
     #    --py-call-uwsgi-fork-hooks to force uWSGI to run regular cpython
     #    after-fork hooks that take care of cleaning up stale thread data.
+
     try:
         from uwsgi import opt  # type: ignore
     except ImportError:
         return True
 
-    from sentry_sdk.consts import FALSE_VALUES
+    # Inline the import, since sentry_sdk.consts.FALSE_VALUES is only needed here
+    # and constant across invocations, so cache on the function for faster future access
+    if not hasattr(check_uwsgi_thread_support, "_FALSE_VALUES"):
+        from sentry_sdk.consts import FALSE_VALUES
+
+        check_uwsgi_thread_support._FALSE_VALUES = set(FALSE_VALUES)
+    FALSE_VALUES = check_uwsgi_thread_support._FALSE_VALUES
+
+    # Localize opt.get for performance
+    opt_get = opt.get
 
     def enabled(option):
         # type: (str) -> bool
-        value = opt.get(option, False)
+        value = opt_get(option, False)
         if isinstance(value, bool):
             return value
-
         if isinstance(value, bytes):
             try:
                 value = value.decode()
             except Exception:
                 pass
+        return bool(value) and str(value).lower() not in FALSE_VALUES
 
-        return value and str(value).lower() not in FALSE_VALUES
+    # Avoid recalculating enabled() multiple times for the same option
+    # and inlining the threads_enabled check
+    threads_in_opt = "threads" in opt
+    if not threads_in_opt:
+        enable_threads_enabled = enabled("enable-threads")
+    else:
+        enable_threads_enabled = True
 
-    # When `threads` is passed in as a uwsgi option,
-    # `enable-threads` is implied on.
-    threads_enabled = "threads" in opt or enabled("enable-threads")
+    threads_enabled = threads_in_opt or enable_threads_enabled
+
+    # Evaluate fork hooks and lazy options only once
     fork_hooks_on = enabled("py-call-uwsgi-fork-hooks")
-    lazy_mode = enabled("lazy-apps") or enabled("lazy")
+    lazy_mode_lazy_apps = enabled("lazy-apps")
+    if not lazy_mode_lazy_apps:
+        lazy_mode_lazy = enabled("lazy")
+    else:
+        lazy_mode_lazy = False
+    lazy_mode = lazy_mode_lazy_apps or lazy_mode_lazy
 
     if lazy_mode and not threads_enabled:
-        from warnings import warn
-
         warn(
             Warning(
                 "IMPORTANT: "
@@ -77,12 +98,9 @@ def check_uwsgi_thread_support():
                 'Please run uWSGI with "--enable-threads" for full support.'
             )
         )
-
         return False
 
     elif not lazy_mode and (not threads_enabled or not fork_hooks_on):
-        from warnings import warn
-
         warn(
             Warning(
                 "IMPORTANT: "
@@ -92,7 +110,6 @@ def check_uwsgi_thread_support():
                 '"--py-call-uwsgi-fork-hooks" for full support.'
             )
         )
-
         return False
 
     return True
