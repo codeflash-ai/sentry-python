@@ -313,7 +313,8 @@ class Item:
 
     def get_transaction_event(self):
         # type: (...) -> Optional[Event]
-        if self.type == "transaction" and self.payload.json is not None:
+        item_type = self.headers.get("type")
+        if item_type == "transaction" and self.payload.json is not None:
             return self.payload.json
         return None
 
@@ -367,3 +368,8 @@ class Item:
     ):
         # type: (...) -> Optional[Item]
         return cls.deserialize_from(io.BytesIO(bytes))
+
+    @property
+    def type(self):
+        # type: () -> Optional[str]
+        return self.headers.get("type")
