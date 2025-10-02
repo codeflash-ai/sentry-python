@@ -344,14 +344,23 @@ def _encode_locations(timestamp, code_locations):
     # type: (int, Iterable[Tuple[MetricMetaKey, Dict[str, Any]]]) -> bytes
     mapping = {}  # type: Dict[str, List[Any]]
 
+    _sanitize_metric_key_func = _sanitize_metric_key
+    _sanitize_unit_func = _sanitize_unit
+    mapping_get = mapping.get
+
     for key, loc in code_locations:
         metric_type, name, unit = key
-        mri = "{}:{}@{}".format(
-            metric_type, _sanitize_metric_key(name), _sanitize_unit(unit)
-        )
+        sanitized_name = _sanitize_metric_key_func(name)
+        sanitized_unit = _sanitize_unit_func(unit)
+        # Use f-string for slightly faster string formatting
+        mri = f"{metric_type}:{sanitized_name}@{sanitized_unit}"
 
         loc["type"] = "location"
-        mapping.setdefault(mri, []).append(loc)
+        lst = mapping_get(mri)
+        if lst is None:
+            mapping[mri] = [loc]
+        else:
+            lst.append(loc)
 
     return json_dumps({"timestamp": timestamp, "mapping": mapping})
 
@@ -381,7 +390,9 @@ class LocalAggregator:
 
     def __init__(self):
         # type: (...) -> None
-        self._measurements = {}  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
+        self._measurements = (
+            {}
+        )  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
 
     def add(
         self,
