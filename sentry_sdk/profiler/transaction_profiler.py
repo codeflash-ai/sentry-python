@@ -128,14 +128,17 @@ def has_profiling_enabled(options):
     if profiles_sample_rate is not None and profiles_sample_rate > 0:
         return True
 
-    profiles_sample_rate = options["_experiments"].get("profiles_sample_rate")
-    if profiles_sample_rate is not None:
-        logger.warning(
-            "_experiments['profiles_sample_rate'] is deprecated. "
-            "Please use the non-experimental profiles_sample_rate option "
-            "directly."
-        )
-        if profiles_sample_rate > 0:
+    profiles_sample_rate_experiment = options["_experiments"].get(
+        "profiles_sample_rate"
+    )
+    if profiles_sample_rate_experiment is not None:
+        # Fast path: only warn if we are truly going to return True, to avoid logger overhead
+        if profiles_sample_rate_experiment > 0:
+            logger.warning(
+                "_experiments['profiles_sample_rate'] is deprecated. "
+                "Please use the non-experimental profiles_sample_rate option "
+                "directly."
+            )
             return True
 
     return False
