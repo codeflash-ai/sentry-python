@@ -36,6 +36,8 @@ from sentry_sdk._types import Annotated, AnnotatedValue, SENSITIVE_DATA_SUBSTITU
 
 from typing import TYPE_CHECKING
 
+_DIST_SITE_PACKAGES_RE = re.compile(r"[\\/](?:dist|site)-packages[\\/]")
+
 if TYPE_CHECKING:
     from types import FrameType, TracebackType
     from typing import (
@@ -45,9 +47,7 @@ if TYPE_CHECKING:
         ContextManager,
         Dict,
         Iterator,
-        List,
         NoReturn,
-        Optional,
         overload,
         ParamSpec,
         Set,
@@ -1150,15 +1150,18 @@ def event_from_exception(
 
 def _module_in_list(name, items):
     # type: (Optional[str], Optional[List[str]]) -> bool
-    if name is None:
+    if name is None or not items:
         return False
 
-    if not items:
-        return False
+    # Use set for fast exact matching
+    items_set = set(items)
+    if name in items_set:
+        return True
 
-    for item in items:
-        if item == name or name.startswith(item + "."):
-            return True
+    # Prepare prefixes for startswith check
+    prefixes = tuple(f"{item}." for item in items)
+    if prefixes and name.startswith(prefixes):
+        return True
 
     return False
 
@@ -1169,9 +1172,7 @@ def _is_external_source(abs_path):
     if abs_path is None:
         return False
 
-    external_source = (
-        re.search(r"[\\/](?:dist|site)-packages[\\/]", abs_path) is not None
-    )
+    external_source = _DIST_SITE_PACKAGES_RE.search(abs_path) is not None
     return external_source
 
 
