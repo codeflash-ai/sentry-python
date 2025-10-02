@@ -91,10 +91,8 @@ __all__ = [
 
 def scopemethod(f):
     # type: (F) -> F
-    f.__doc__ = "%s\n\n%s" % (
-        "Alias for :py:meth:`sentry_sdk.Scope.%s`" % f.__name__,
-        inspect.getdoc(getattr(Scope, f.__name__)),
-    )
+    name = f.__name__
+    f.__doc__ = f"Alias for :py:meth:`sentry_sdk.Scope.{name}`\n\n{inspect.getdoc(getattr(Scope, name))}"
     return f
 
 
