@@ -51,22 +51,19 @@ def _safe_decode(key):
             return key.decode()
         except UnicodeDecodeError:
             return ""
-
     return str(key)
 
 
 def _key_as_string(key):
     # type: (Any) -> str
     if isinstance(key, (dict, list, tuple)):
-        key = ", ".join(_safe_decode(x) for x in key)
+        return ", ".join(map(_safe_decode, key))
     elif isinstance(key, bytes):
-        key = _safe_decode(key)
+        return _safe_decode(key)
     elif key is None:
-        key = ""
+        return ""
     else:
-        key = str(key)
-
-    return key
+        return str(key)
 
 
 def _get_safe_key(method_name, args, kwargs):
