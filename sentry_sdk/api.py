@@ -317,7 +317,8 @@ def set_tag(key, value):
 @scopemethod
 def set_tags(tags):
     # type: (Mapping[str, object]) -> None
-    return get_isolation_scope().set_tags(tags)
+    scope = Scope.get_isolation_scope()
+    return scope.set_tags(tags)
 
 
 @scopemethod
