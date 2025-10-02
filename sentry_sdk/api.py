@@ -6,38 +6,19 @@ from sentry_sdk import tracing_utils, Client
 from sentry_sdk._init_implementation import init
 from sentry_sdk.consts import INSTRUMENTER
 from sentry_sdk.scope import Scope, _ScopeManager, new_scope, isolation_scope
-from sentry_sdk.tracing import NoOpSpan, Transaction, trace
+from sentry_sdk.tracing import trace
 from sentry_sdk.crons import monitor
 
 from typing import TYPE_CHECKING
 
+_get_isolation_scope = Scope.get_isolation_scope
+
 if TYPE_CHECKING:
-    from collections.abc import Mapping
 
     from typing import Any
-    from typing import Dict
-    from typing import Generator
-    from typing import Optional
     from typing import overload
     from typing import Callable
     from typing import TypeVar
-    from typing import ContextManager
-    from typing import Union
-
-    from typing_extensions import Unpack
-
-    from sentry_sdk.client import BaseClient
-    from sentry_sdk._types import (
-        Event,
-        Hint,
-        Breadcrumb,
-        BreadcrumbHint,
-        ExcInfo,
-        MeasurementUnit,
-        LogLevelStr,
-        SamplingContext,
-    )
-    from sentry_sdk.tracing import Span, TransactionKwargs
 
     T = TypeVar("T")
     F = TypeVar("F", bound=Callable[..., Any])
@@ -311,7 +292,7 @@ def push_scope(  # noqa: F811
 @scopemethod
 def set_tag(key, value):
     # type: (str, Any) -> None
-    return get_isolation_scope().set_tag(key, value)
+    return _get_isolation_scope().set_tag(key, value)
 
 
 @scopemethod
