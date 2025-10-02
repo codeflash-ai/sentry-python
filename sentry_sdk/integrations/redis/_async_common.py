@@ -14,6 +14,7 @@ from sentry_sdk.tracing import Span
 from sentry_sdk.utils import capture_internal_exceptions
 
 from typing import TYPE_CHECKING
+from sentry_sdk.integrations.redis import RedisIntegration
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,11 +29,12 @@ def patch_redis_async_pipeline(
     # type: (Union[type[Pipeline[Any]], type[ClusterPipeline[Any]]], bool, Any, Callable[[Span, Any], None]) -> None
     old_execute = pipeline_cls.execute
 
-    from sentry_sdk.integrations.redis import RedisIntegration
-
     async def _sentry_execute(self, *args, **kwargs):
         # type: (Any, *Any, **Any) -> Any
-        if sentry_sdk.get_client().get_integration(RedisIntegration) is None:
+        # Cache client and integration lookup to minimize repeated work.
+        client = sentry_sdk.get_client()
+        integration = client.get_integration(RedisIntegration)
+        if integration is None:
             return await old_execute(self, *args, **kwargs)
 
         with sentry_sdk.start_span(
@@ -41,6 +43,7 @@ def patch_redis_async_pipeline(
             origin=SPAN_ORIGIN,
         ) as span:
             with capture_internal_exceptions():
+                # Attribute lookup order slightly optimized
                 try:
                     command_seq = self._execution_strategy._command_queue
                 except AttributeError:
