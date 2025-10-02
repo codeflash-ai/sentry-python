@@ -14,6 +14,7 @@ from sentry_sdk.tracing import Span
 from sentry_sdk.utils import capture_internal_exceptions
 
 from typing import TYPE_CHECKING
+from sentry_sdk.integrations.redis import RedisIntegration as _RedisIntegration
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,11 +68,9 @@ def patch_redis_async_client(cls, is_cluster, set_db_data_fn):
     # type: (Union[type[StrictRedis[Any]], type[RedisCluster[Any]]], bool, Callable[[Span, Any], None]) -> None
     old_execute_command = cls.execute_command
 
-    from sentry_sdk.integrations.redis import RedisIntegration
-
     async def _sentry_execute_command(self, name, *args, **kwargs):
         # type: (Any, str, *Any, **Any) -> Any
-        integration = sentry_sdk.get_client().get_integration(RedisIntegration)
+        integration = sentry_sdk.get_client().get_integration(_RedisIntegration)
         if integration is None:
             return await old_execute_command(self, name, *args, **kwargs)
 
@@ -83,6 +82,7 @@ def patch_redis_async_client(cls, is_cluster, set_db_data_fn):
         )
 
         cache_span = None
+        # Only enter cache context if needed to avoid unnecessary work
         if cache_properties["is_cache_key"] and cache_properties["op"] is not None:
             cache_span = sentry_sdk.start_span(
                 op=cache_properties["op"],
