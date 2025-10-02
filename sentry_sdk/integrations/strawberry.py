@@ -1,4 +1,3 @@
-import functools
 import hashlib
 from inspect import isawaitable
 
@@ -86,7 +85,6 @@ def _patch_schema_init():
     # type: () -> None
     old_schema_init = Schema.__init__
 
-    @functools.wraps(old_schema_init)
     def _sentry_patched_schema_init(self, *args, **kwargs):
         # type: (Schema, Any, Any) -> None
         integration = sentry_sdk.get_client().get_integration(StrawberryIntegration)
