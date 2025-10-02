@@ -126,10 +126,15 @@ class monitor:  # noqa: N801
 
     def _sync_wrapper(self, fn):
         # type: (Callable[P, R]) -> Callable[P, R]
-        @wraps(fn)
+        monitor_self = self
+
         def inner(*args: "P.args", **kwargs: "P.kwargs"):
             # type: (...) -> R
-            with self:
+            with monitor_self:
                 return fn(*args, **kwargs)
 
+        inner.__name__ = fn.__name__
+        inner.__doc__ = fn.__doc__
+        inner.__module__ = fn.__module__
+        inner.__qualname__ = fn.__qualname__
         return inner
