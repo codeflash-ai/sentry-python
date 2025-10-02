@@ -192,10 +192,8 @@ def maybe_create_breadcrumbs_from_span(scope, span):
 
 def _get_frame_module_abs_path(frame):
     # type: (FrameType) -> Optional[str]
-    try:
-        return frame.f_code.co_filename
-    except Exception:
-        return None
+    code = getattr(frame, "f_code", None)
+    return getattr(code, "co_filename", None) if code is not None else None
 
 
 def _should_be_included(
@@ -527,7 +525,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
