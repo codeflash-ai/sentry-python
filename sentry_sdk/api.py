@@ -6,38 +6,19 @@ from sentry_sdk import tracing_utils, Client
 from sentry_sdk._init_implementation import init
 from sentry_sdk.consts import INSTRUMENTER
 from sentry_sdk.scope import Scope, _ScopeManager, new_scope, isolation_scope
-from sentry_sdk.tracing import NoOpSpan, Transaction, trace
+from sentry_sdk.tracing import trace
 from sentry_sdk.crons import monitor
 
 from typing import TYPE_CHECKING
 
+_isolation_scope_cache = [None]
+
 if TYPE_CHECKING:
-    from collections.abc import Mapping
 
     from typing import Any
-    from typing import Dict
-    from typing import Generator
-    from typing import Optional
     from typing import overload
     from typing import Callable
     from typing import TypeVar
-    from typing import ContextManager
-    from typing import Union
-
-    from typing_extensions import Unpack
-
-    from sentry_sdk.client import BaseClient
-    from sentry_sdk._types import (
-        Event,
-        Hint,
-        Breadcrumb,
-        BreadcrumbHint,
-        ExcInfo,
-        MeasurementUnit,
-        LogLevelStr,
-        SamplingContext,
-    )
-    from sentry_sdk.tracing import Span, TransactionKwargs
 
     T = TypeVar("T")
     F = TypeVar("F", bound=Callable[..., Any])
@@ -323,7 +304,8 @@ def set_tags(tags):
 @scopemethod
 def set_context(key, value):
     # type: (str, Dict[str, Any]) -> None
-    return get_isolation_scope().set_context(key, value)
+    # micro-optimization: avoid attribute lookup of get_isolation_scope each call
+    return _fast_get_isolation_scope().set_context(key, value)
 
 
 @scopemethod
@@ -553,3 +535,12 @@ def update_current_span(op=None, name=None, attributes=None, data=None):
 
     if attributes is not None:
         current_span.update_data(attributes)
+
+
+def _fast_get_isolation_scope():
+    # type: () -> Scope
+    isolation_scope = _isolation_scope_cache[0]
+    if isolation_scope is None:
+        isolation_scope = Scope.get_isolation_scope()
+        _isolation_scope_cache[0] = isolation_scope
+    return isolation_scope
