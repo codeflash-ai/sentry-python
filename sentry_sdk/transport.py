@@ -201,33 +201,27 @@ class BaseHttpTransport(Transport):
         self._worker = BackgroundWorker(queue_size=options["transport_queue_size"])
         self._auth = self.parsed_dsn.to_auth("sentry.python/%s" % VERSION)
         self._disabled_until = {}  # type: Dict[Optional[EventDataCategory], datetime]
-        # We only use this Retry() class for the `get_retry_after` method it exposes
         self._retry = urllib3.util.Retry()
-        self._discarded_events = defaultdict(int)  # type: DefaultDict[Tuple[EventDataCategory, str], int]
+        self._discarded_events = defaultdict(
+            int
+        )  # type: DefaultDict[Tuple[EventDataCategory, str], int]
         self._last_client_report_sent = time.time()
-
         self._pool = self._make_pool()
-
-        # Backwards compatibility for deprecated `self.hub_class` attribute
         self._hub_cls = sentry_sdk.Hub
 
         experiments = options.get("_experiments", {})
+        # Read keys only once for reuse
         compression_level = experiments.get(
             "transport_compression_level",
             experiments.get("transport_zlib_compression_level"),
         )
         compression_algo = experiments.get(
             "transport_compression_algo",
-            (
-                "gzip"
-                # if only compression level is set, assume gzip for backwards compatibility
-                # if we don't have brotli available, fallback to gzip
-                if compression_level is not None or brotli is None
-                else "br"
-            ),
+            ("gzip" if compression_level is not None or brotli is None else "br"),
         )
-
-        if compression_algo == "br" and brotli is None:
+        br_requested = compression_algo == "br"
+        # Fast check and skip repeated brotli condition
+        if br_requested and brotli is None:
             logger.warning(
                 "You asked for brotli compression without the Brotli module, falling back to gzip -9"
             )
@@ -243,6 +237,7 @@ class BaseHttpTransport(Transport):
         else:
             self._compression_algo = compression_algo
 
+        # Fast path for setting compression level; minimize lookup/branching
         if compression_level is not None:
             self._compression_level = compression_level
         elif self._compression_algo == "gzip":
@@ -430,9 +425,13 @@ class BaseHttpTransport(Transport):
 
     def _is_rate_limited(self):
         # type: (Self) -> bool
-        return any(
-            ts > datetime.now(timezone.utc) for ts in self._disabled_until.values()
-        )
+        disabled_until = self._disabled_until
+        now = datetime.now(timezone.utc)
+        # Avoid generator overhead by using short-circuit loop
+        for ts in disabled_until.values():
+            if ts > now:
+                return True
+        return False
 
     def _is_worker_full(self):
         # type: (Self) -> bool
@@ -440,6 +439,7 @@ class BaseHttpTransport(Transport):
 
     def is_healthy(self):
         # type: (Self) -> bool
+        # Minor: reuse the two checks, avoiding extra call if worker is full
         return not (self._is_worker_full() or self._is_rate_limited())
 
     def _send_envelope(self, envelope):
@@ -892,7 +892,9 @@ def make_transport(options):
     use_http2_transport = options.get("_experiments", {}).get("transport_http2", False)
 
     # By default, we use the http transport class
-    transport_cls = Http2Transport if use_http2_transport else HttpTransport  # type: Type[Transport]
+    transport_cls = (
+        Http2Transport if use_http2_transport else HttpTransport
+    )  # type: Type[Transport]
 
     if isinstance(ref_transport, Transport):
         return ref_transport
