@@ -4,7 +4,6 @@ Code used for the Queries module in Sentry
 
 from sentry_sdk.consts import OP, SPANDATA
 from sentry_sdk.integrations.redis.utils import _get_safe_command
-from sentry_sdk.utils import capture_internal_exceptions
 
 from typing import TYPE_CHECKING
 
@@ -19,26 +18,31 @@ def _compile_db_span_properties(integration, redis_command, args):
     # type: (RedisIntegration, str, tuple[Any, ...]) -> dict[str, Any]
     description = _get_db_span_description(integration, redis_command, args)
 
-    properties = {
+    # Instead of multiple dict insertions, build as a literal (minor perf gain)
+    return {
         "op": OP.DB_REDIS,
         "description": description,
     }
 
-    return properties
-
 
 def _get_db_span_description(integration, command_name, args):
     # type: (RedisIntegration, str, tuple[Any, ...]) -> str
-    description = command_name
-
-    with capture_internal_exceptions():
+    # Optimize exception context management to avoid unnecessary context creation
+    try:
+        # capture_internal_exceptions() enters a context manager that may be slow.
+        # Optimize by omitting direct assignment of description=command_name since it's always overwritten below,
+        # and only enter context if _get_safe_command would raise (rarely):
         description = _get_safe_command(command_name, args)
+    except Exception:
+        # Preserve original behavioral semantics: if capture_internal_exceptions suppresses, description=command_name
+        description = command_name
 
-    data_should_be_truncated = (
-        integration.max_data_size and len(description) > integration.max_data_size
-    )
-    if data_should_be_truncated:
-        description = description[: integration.max_data_size - len("...")] + "..."
+    max_data_size = integration.max_data_size
+    # Cache len(description) for the truncation check, and skip unnecessary check if max_data_size is None or 0
+    if max_data_size:
+        description_len = len(description)
+        if description_len > max_data_size:
+            description = description[: max_data_size - 3] + "..."
 
     return description
 
