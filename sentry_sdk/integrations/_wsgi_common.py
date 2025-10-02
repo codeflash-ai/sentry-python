@@ -14,14 +14,7 @@ except ImportError:
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any
-    from typing import Dict
-    from typing import Iterator
-    from typing import Mapping
-    from typing import MutableMapping
-    from typing import Optional
-    from typing import Union
-    from sentry_sdk._types import Event, HttpStatusCodeRange
+    pass
 
 
 SENSITIVE_ENV_KEYS = (
@@ -172,7 +165,13 @@ class RequestExtractor:
 
     def is_json(self):
         # type: () -> bool
-        return _is_json_content_type(self.env().get("CONTENT_TYPE"))
+        ct = self.env().get("CONTENT_TYPE")
+        mt = (ct or "").split(";", 1)[0]
+        return (
+            mt == "application/json"
+            or (mt.startswith("application/"))
+            and mt.endswith("+json")
+        )
 
     def json(self):
         # type: () -> Optional[Any]
