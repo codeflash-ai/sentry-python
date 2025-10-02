@@ -527,7 +527,9 @@ class PropagationContext:
             )
             return
 
-        self.dynamic_sampling_context["sample_rand"] = f"{sample_rand:.6f}"  # noqa: E231
+        self.dynamic_sampling_context["sample_rand"] = (
+            f"{sample_rand:.6f}"  # noqa: E231
+        )
 
     def _sample_rand(self):
         # type: () -> Optional[str]
@@ -753,16 +755,22 @@ def should_propagate_trace(client, url):
 
 
 def normalize_incoming_data(incoming_data):
-    # type: (Dict[str, Any]) -> Dict[str, Any]
     """
     Normalizes incoming data so the keys are all lowercase with dashes instead of underscores and stripped from known prefixes.
     """
-    data = {}
-    for key, value in incoming_data.items():
-        if key.startswith("HTTP_"):
-            key = key[5:]
+    HTTP_PREFIX = "HTTP_"
+    HTTP_PREFIX_LEN = len(HTTP_PREFIX)
+    # Local var lookups are faster in inner loops
+    replace = str.replace
+    lower = str.lower
 
-        key = key.replace("_", "-").lower()
+    data = {}
+    # Use items() as in the original, but variables optimized above
+    for key, value in incoming_data.items():
+        if key.startswith(HTTP_PREFIX):
+            key = key[HTTP_PREFIX_LEN:]
+        # using local replace and lower bindings for performance
+        key = lower(replace(key, "_", "-"))
         data[key] = value
 
     return data
