@@ -49,6 +49,17 @@ if TYPE_CHECKING:
     from sentry_sdk._types import MetricType
     from sentry_sdk._types import MetricValue
 
+_SANITIZE_TAG_TABLE = str.maketrans(
+    {
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+        "\\": "\\\\",
+        "|": "\\u{7c}",
+        ",": "\\u{2c}",
+    }
+)
+
 
 warnings.warn(
     "The sentry_sdk.metrics module is deprecated and will be removed in the next major release. "
@@ -77,17 +88,7 @@ _sanitize_tag_key = partial(re.compile(r"[^a-zA-Z0-9_\-.\/]+").sub, "")
 
 def _sanitize_tag_value(value):
     # type: (str) -> str
-    table = str.maketrans(
-        {
-            "\n": "\\n",
-            "\r": "\\r",
-            "\t": "\\t",
-            "\\": "\\\\",
-            "|": "\\u{7c}",
-            ",": "\\u{2c}",
-        }
-    )
-    return value.translate(table)
+    return value.translate(_SANITIZE_TAG_TABLE)
 
 
 def get_code_location(stacklevel):
@@ -381,7 +382,9 @@ class LocalAggregator:
 
     def __init__(self):
         # type: (...) -> None
-        self._measurements = {}  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
+        self._measurements = (
+            {}
+        )  # type: Dict[Tuple[str, MetricTagsInternal], Tuple[float, float, int, float]]
 
     def add(
         self,
