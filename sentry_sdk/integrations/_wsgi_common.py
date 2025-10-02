@@ -161,9 +161,13 @@ class RequestExtractor:
         if form or files:
             data = {}
             if form:
-                data = dict(form.items())
+                # If form is already a dict, use copy for better performance.
+                try:
+                    data = form.copy()
+                except AttributeError:
+                    data = dict(form.items())
             if files:
-                for key in files.keys():
+                for key in files:
                     data[key] = AnnotatedValue.removed_because_raw_data()
 
             return data
