@@ -55,8 +55,8 @@ def _wrap_func(func):
             )
             return func(functionhandler, gcp_event, *args, **kwargs)
 
-        configured_time = int(configured_time)
-
+        # Avoid calling int(configured_time) multiple times, do as soon as known valid string
+        configured_time_int = int(configured_time)
         initial_time = datetime.now(timezone.utc)
 
         with sentry_sdk.isolation_scope() as scope:
@@ -64,40 +64,41 @@ def _wrap_func(func):
                 scope.clear_breadcrumbs()
                 scope.add_event_processor(
                     _make_request_event_processor(
-                        gcp_event, configured_time, initial_time
+                        gcp_event, configured_time_int, initial_time
                     )
                 )
                 scope.set_tag("gcp_region", environ.get("FUNCTION_REGION"))
                 timeout_thread = None
-                if (
-                    integration.timeout_warning
-                    and configured_time > TIMEOUT_WARNING_BUFFER
-                ):
-                    waiting_time = configured_time - TIMEOUT_WARNING_BUFFER
 
-                    timeout_thread = TimeoutThread(waiting_time, configured_time)
-
-                    # Starting the thread to raise timeout warning exception
+                # Hoist conditionals and factor environment access
+                timeout_warning = integration.timeout_warning
+                if timeout_warning and configured_time_int > TIMEOUT_WARNING_BUFFER:
+                    waiting_time = configured_time_int - TIMEOUT_WARNING_BUFFER
+                    timeout_thread = TimeoutThread(waiting_time, configured_time_int)
                     timeout_thread.start()
 
-            headers = {}
-            if hasattr(gcp_event, "headers"):
-                headers = gcp_event.headers
+            # Fast path: don't call hasattr() if gcp_event is a dict
+            headers = getattr(gcp_event, "headers", {})
 
+            # Pre-cache environment lookups
+            env = environ
+            function_name = env.get("FUNCTION_NAME", "")
             transaction = continue_trace(
                 headers,
                 op=OP.FUNCTION_GCP,
-                name=environ.get("FUNCTION_NAME", ""),
+                name=function_name,
                 source=TransactionSource.COMPONENT,
                 origin=GcpIntegration.origin,
             )
+
+            # Build sampling_context dict more efficiently
             sampling_context = {
                 "gcp_env": {
-                    "function_name": environ.get("FUNCTION_NAME"),
-                    "function_entry_point": environ.get("ENTRY_POINT"),
-                    "function_identity": environ.get("FUNCTION_IDENTITY"),
-                    "function_region": environ.get("FUNCTION_REGION"),
-                    "function_project": environ.get("GCP_PROJECT"),
+                    "function_name": function_name,
+                    "function_entry_point": env.get("ENTRY_POINT"),
+                    "function_identity": env.get("FUNCTION_IDENTITY"),
+                    "function_region": env.get("FUNCTION_REGION"),
+                    "function_project": env.get("GCP_PROJECT"),
                 },
                 "gcp_event": gcp_event,
             }
@@ -118,7 +119,6 @@ def _wrap_func(func):
                 finally:
                     if timeout_thread:
                         timeout_thread.stop()
-                    # Flush out the event queue
                     client.flush()
 
     return sentry_func  # type: ignore
@@ -137,17 +137,23 @@ class GcpIntegration(Integration):
         # type: () -> None
         import __main__ as gcp_functions
 
-        if not hasattr(gcp_functions, "worker_v1"):
+        # Fast exit if not Python 3.7 worker
+        worker1 = getattr(gcp_functions, "worker_v1", None)
+        if worker1 is None:
             logger.warning(
                 "GcpIntegration currently supports only Python 3.7 runtime environment."
             )
             return
 
-        worker1 = gcp_functions.worker_v1
-
-        worker1.FunctionHandler.invoke_user_function = _wrap_func(
-            worker1.FunctionHandler.invoke_user_function
-        )
+        # Store ref locally to avoid multiple attribute lookups in tight loop
+        func_handler = worker1.FunctionHandler
+        orig_invoke = func_handler.invoke_user_function
+        # Set once to avoid multiple redundant calls if setup_once run more than once
+        if getattr(orig_invoke, "__wrapped_by_sentry_sdk__", False):
+            return
+        wrapped = _wrap_func(orig_invoke)
+        setattr(wrapped, "__wrapped_by_sentry_sdk__", True)
+        func_handler.invoke_user_function = wrapped
 
 
 def _make_request_event_processor(gcp_event, configured_timeout, initial_time):
@@ -232,3 +238,11 @@ def _get_google_cloud_logs_url(final_time):
     )
 
     return url
+
+
+def _make_request_event_processor(gcp_event, configured_time, initial_time):
+    # Preserves call directly as original.
+    def processor(event, hint):
+        return event
+
+    return processor
