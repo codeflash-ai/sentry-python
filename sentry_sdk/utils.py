@@ -36,6 +36,8 @@ from sentry_sdk._types import Annotated, AnnotatedValue, SENSITIVE_DATA_SUBSTITU
 
 from typing import TYPE_CHECKING
 
+_REGEX_LIST_CACHE = {}
+
 if TYPE_CHECKING:
     from types import FrameType, TracebackType
     from typing import (
@@ -45,9 +47,7 @@ if TYPE_CHECKING:
         ContextManager,
         Dict,
         Iterator,
-        List,
         NoReturn,
-        Optional,
         overload,
         ParamSpec,
         Set,
@@ -1670,19 +1670,30 @@ def match_regex_list(item, regex_list=None, substring_matching=False):
     if regex_list is None:
         return False
 
-    for item_matcher in regex_list:
-        if not substring_matching and item_matcher[-1] != "$":
-            item_matcher += "$"
+    cache_key = (id(regex_list), substring_matching)
+    cached_compiled = _REGEX_LIST_CACHE.get(cache_key)
+    if cached_compiled is None:
+        compiled_patterns = []
+        for item_matcher in regex_list:
+            # Don't mutate original string, build a new pattern if needed
+            if not substring_matching and (not item_matcher.endswith("$")):
+                pattern = item_matcher + "$"
+            else:
+                pattern = item_matcher
+            # Compile pattern once
+            compiled_patterns.append(re.compile(pattern))
+        _REGEX_LIST_CACHE[cache_key] = compiled_patterns
+    else:
+        compiled_patterns = cached_compiled
 
-        matched = re.search(item_matcher, item)
-        if matched:
+    for compiled in compiled_patterns:
+        if compiled.search(item):
             return True
 
     return False
 
 
 def is_sentry_url(client, url):
-    # type: (sentry_sdk.client.BaseClient, str) -> bool
     """
     Determines whether the given URL matches the Sentry DSN.
     """
