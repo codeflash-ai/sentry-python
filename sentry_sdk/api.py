@@ -198,7 +198,8 @@ def add_attachment(
     add_to_transactions=False,  # type: bool
 ):
     # type: (...) -> None
-    return get_isolation_scope().add_attachment(
+    isolation_scope = get_isolation_scope()
+    return isolation_scope.add_attachment(
         bytes, filename, path, content_type, add_to_transactions
     )
 
