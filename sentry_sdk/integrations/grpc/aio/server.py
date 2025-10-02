@@ -24,7 +24,6 @@ class ServerInterceptor(grpc.aio.ServerInterceptor):  # type: ignore
     def __init__(self, find_name=None):
         # type: (ServerInterceptor, Callable[[ServicerContext], str] | None) -> None
         self._find_method_name = find_name or self._find_name
-
         super().__init__()
 
     async def intercept_service(self, continuation, handler_call_details):
@@ -97,4 +96,7 @@ class ServerInterceptor(grpc.aio.ServerInterceptor):  # type: ignore
 
     def _find_name(self, context):
         # type: (ServicerContext) -> str
-        return self._handler_call_details.method
+        handler_call_details = getattr(self, "_handler_call_details", None)
+        if handler_call_details is not None:
+            return handler_call_details.method
+        raise AttributeError("_handler_call_details is not set")
