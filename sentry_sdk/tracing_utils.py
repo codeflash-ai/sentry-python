@@ -218,33 +218,11 @@ def _should_be_included(
     )
 
 
-def add_query_source(span):
-    # type: (sentry_sdk.tracing.Span) -> None
+def add_source(span, project_root, in_app_include, in_app_exclude):
+    # type: (sentry_sdk.tracing.Span, Optional[str], Optional[list[str]], Optional[list[str]]) -> None
     """
     Adds OTel compatible source code information to the span
     """
-    client = sentry_sdk.get_client()
-    if not client.is_active():
-        return
-
-    if span.timestamp is None or span.start_timestamp is None:
-        return
-
-    should_add_query_source = client.options.get("enable_db_query_source", True)
-    if not should_add_query_source:
-        return
-
-    duration = span.timestamp - span.start_timestamp
-    threshold = client.options.get("db_query_source_threshold_ms", 0)
-    slow_query = duration / timedelta(milliseconds=1) > threshold
-
-    if not slow_query:
-        return
-
-    project_root = client.options["project_root"]
-    in_app_include = client.options.get("in_app_include")
-    in_app_exclude = client.options.get("in_app_exclude")
-
     # Find the correct frame
     frame = sys._getframe()  # type: Union[FrameType, None]
     while frame is not None:
@@ -309,6 +287,68 @@ def add_query_source(span):
             span.set_data(SPANDATA.CODE_FUNCTION, frame.f_code.co_name)
 
 
+def add_query_source(span):
+    # type: (sentry_sdk.tracing.Span) -> None
+    """
+    Adds OTel compatible source code information to a database query span
+    """
+    client = sentry_sdk.get_client()
+    if not client.is_active():
+        return
+
+    if span.timestamp is None or span.start_timestamp is None:
+        return
+
+    should_add_query_source = client.options.get("enable_db_query_source", True)
+    if not should_add_query_source:
+        return
+
+    duration = span.timestamp - span.start_timestamp
+    threshold = client.options.get("db_query_source_threshold_ms", 0)
+    slow_query = duration / timedelta(milliseconds=1) > threshold
+
+    if not slow_query:
+        return
+
+    add_source(
+        span=span,
+        project_root=client.options["project_root"],
+        in_app_include=client.options.get("in_app_include"),
+        in_app_exclude=client.options.get("in_app_exclude"),
+    )
+
+
+def add_http_request_source(span):
+    # type: (sentry_sdk.tracing.Span) -> None
+    """
+    Adds OTel compatible source code information to a span for an outgoing HTTP request
+    """
+    client = sentry_sdk.get_client()
+    if not client.is_active():
+        return
+
+    if span.timestamp is None or span.start_timestamp is None:
+        return
+
+    should_add_request_source = client.options.get("enable_http_request_source", False)
+    if not should_add_request_source:
+        return
+
+    duration = span.timestamp - span.start_timestamp
+    threshold = client.options.get("http_request_source_threshold_ms", 0)
+    slow_query = duration / timedelta(milliseconds=1) > threshold
+
+    if not slow_query:
+        return
+
+    add_source(
+        span=span,
+        project_root=client.options["project_root"],
+        in_app_include=client.options.get("in_app_include"),
+        in_app_exclude=client.options.get("in_app_exclude"),
+    )
+
+
 def extract_sentrytrace_data(header):
     # type: (Optional[str]) -> Optional[Dict[str, Union[str, bool, None]]]
     """
@@ -327,9 +367,9 @@ def extract_sentrytrace_data(header):
     trace_id, parent_span_id, sampled_str = match.groups()
     parent_sampled = None
 
-    if trace_id:
+    if trace_id and len(trace_id) != 32:
         trace_id = "{:032x}".format(int(trace_id, 16))
-    if parent_span_id:
+    if parent_span_id and len(parent_span_id) != 16:
         parent_span_id = "{:016x}".format(int(parent_span_id, 16))
     if sampled_str:
         parent_sampled = sampled_str != "0"
